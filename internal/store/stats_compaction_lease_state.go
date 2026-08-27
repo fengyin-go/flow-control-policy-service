@@ -30,7 +30,9 @@ func (s *StatsCompactionLeaseLeaseState) Release(key string, token uint64) bool 
 	if _, ok := s.active[key]; !ok {
 		return false
 	}
-	s.active[key] = 0
+	// 真正移除租约，而不是把值置 0：置 0 后键仍留在 map 里，
+	// 会让 Acquire 误判为 busy、Active() 仍计入已释放的租约。
+	delete(s.active, key)
 	return true
 }
 
