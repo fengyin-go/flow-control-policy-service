@@ -30,7 +30,7 @@ func (s *RuleRefreshLeaseLeaseState) Release(key string, token uint64) bool {
 	if _, ok := s.active[key]; !ok {
 		return false
 	}
-	s.active[key] = 0
+	delete(s.active, key)
 	return true
 }
 
