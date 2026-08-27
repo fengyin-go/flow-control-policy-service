@@ -18,19 +18,23 @@ func (s *BreakerProbeLeaseLeaseState) Acquire(key string) (uint64, bool) {
 	if _, exists := s.active[key]; exists {
 		return 0, false
 	}
-	token := uint64(1)
-	s.active[key] = token
-	return token, true
+	s.next++
+	s.active[key] = s.next
+	return s.next, true
 }
 
 func (s *BreakerProbeLeaseLeaseState) Release(key string, token uint64) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	_ = token
-	if _, ok := s.active[key]; !ok {
+	cur, ok := s.active[key]
+	if !ok {
 		return false
 	}
-	s.active[key] = 0
+	// 仅在 token 匹配时释放，避免误删一个被后续 Acquire 重新持有的租约。
+	if cur != token {
+		return false
+	}
+	delete(s.active, key)
 	return true
 }
 
