@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>流量控制台</title>
+  <style>
+    :root {
+      --bg: #0b1f1a;
+      --panel: #12332b;
+      --panel-2: #17453a;
+      --text: #e6f4ef;
+      --muted: #8fb3a7;
+      --accent: #2dd4bf;
+      --good: #34d399;
+      --bad: #f87171;
+      --warn: #fbbf24;
+      --border: #1f5245;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: system-ui, -apple-system, sans-serif; background: var(--bg); color: var(--text); }
+    header { display: flex; align-items: center; justify-content: space-between; padding: 16px 24px; background: var(--panel); border-bottom: 1px solid var(--border); }
+    header h1 { margin: 0; font-size: 18px; }
+    .stats { display: flex; gap: 14px; }
+    .stat { background: var(--panel-2); padding: 8px 16px; border-radius: 8px; text-align: center; }
+    .stat b { display: block; font-size: 20px; color: var(--accent); }
+    .stat span { font-size: 12px; color: var(--muted); }
+    .wrap { display: grid; grid-template-columns: 300px 1fr; gap: 16px; padding: 20px 24px; }
+    .card { background: var(--panel); border-radius: 10px; padding: 16px; }
+    .card h2 { margin: 0 0 12px; font-size: 14px; color: var(--muted); }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--border); }
+    .pill { padding: 2px 8px; border-radius: 12px; font-size: 11px; }
+    .closed { background: rgba(52,211,153,.15); color: var(--good); }
+    .open { background: rgba(248,113,113,.15); color: var(--bad); }
+    .half_open { background: rgba(251,191,36,.15); color: var(--warn); }
+    button { padding: 8px 14px; border: none; border-radius: 6px; background: var(--accent); color: #06251e; font-weight: 600; cursor: pointer; }
+    input, select { width: 100%; padding: 8px; margin-bottom: 8px; border-radius: 6px; border: 1px solid var(--border); background: var(--panel-2); color: var(--text); }
+    #log { font-size: 12px; color: var(--muted); }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>🛡️ 流量控制台</h1>
+    <div class="stats" id="stats"></div>
+  </header>
+  <div class="wrap">
+    <div>
+      <div class="card">
+        <h2>创建限流规则</h2>
+        <input id="r-name" placeholder="规则名称">
+        <input id="r-resource" placeholder="资源标识，如 /api/order">
+        <select id="r-algo">
+          <option value="fixed_window">固定窗口</option>
+          <option value="sliding_window">滑动窗口</option>
+          <option value="token_bucket">令牌桶</option>
+        </select>
+        <input id="r-limit" placeholder="阈值，如 100" type="number">
+        <button onclick="createRule()">创建规则</button>
+      </div>
+      <div class="card">
+        <h2>创建熔断器</h2>
+        <input id="b-name" placeholder="熔断器名称">
+        <input id="b-resource" placeholder="资源标识">
+        <input id="b-threshold" placeholder="失败阈值，如 5" type="number">
+        <button onclick="createBreaker()">创建熔断器</button>
+      </div>
+      <div class="card">
+        <h2>操作日志</h2>
+        <div id="log">就绪。</div>
+      </div>
+    </div>
+    <div>
+      <div class="card">
+        <h2>限流规则</h2>
+        <table id="rule-table">
+          <thead><tr><th>名称</th><th>资源</th><th>算法</th><th>阈值</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <div class="card">
+        <h2>熔断器</h2>
+        <table id="breaker-table">
+          <thead><tr><th>名称</th><th>资源</th><th>状态</th><th>失败/成功</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+  <script>
+    async function api(path, opts) {
+      const res = await fetch(path, opts);
+      const j = await res.json();
+      if (j.code !== 0) { log('错误: ' + j.message); return null; }
+      return j.data;
+    }
+    function log(msg) { document.getElementById('log').textContent = new Date().toLocaleTimeString() + ' ' + msg; }
+
+    async function loadStats() {
+      const s = await api('/api/stats/flow');
+      if (!s) return;
+      document.getElementById('stats').innerHTML =
+        `<div class="stat"><b>${s.total_rules}</b><span>规则</span></div>` +
+        `<div class="stat"><b>${s.total_breakers}</b><span>熔断器</span></div>` +
+        `<div class="stat"><b>${(s.overall_reject_rate * 100).toFixed(1)}%</b><span>拒绝率</span></div>`;
+    }
+
+    async function loadRules() {
+      const page = await api('/api/rules?size=100');
+      if (!page) return;
+      const rows = page.items || [];
+      document.querySelector('#rule-table tbody').innerHTML = rows.map(r =>
+        `<tr><td>${r.name}</td><td>${r.resource}</td><td>${r.algorithm}</td><td>${r.limit}</td></tr>`).join('');
+    }
+
+    async function loadBreakers() {
+      const list = await api('/api/breakers');
+      if (!list) return;
+      document.querySelector('#breaker-table tbody').innerHTML = list.map(b =>
+        `<tr><td>${b.name}</td><td>${b.resource}</td>
+         <td><span class="pill ${b.state}">${b.state}</span></td>
+         <td>${b.fail_count}/${b.success_count}</td></tr>`).join('');
+    }
+
+    async function createRule() {
+      const name = document.getElementById('r-name').value.trim();
+      const resource = document.getElementById('r-resource').value.trim();
+      const algorithm = document.getElementById('r-algo').value;
+      const limit = parseInt(document.getElementById('r-limit').value, 10);
+      if (!name || !resource || !limit) { log('请填写完整规则信息'); return; }
+      const r = await api('/api/rules', { method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ name, resource, algorithm, limit }) });
+      if (r) { log('规则已创建: ' + r.name); loadRules(); loadStats(); }
+    }
+
+    async function createBreaker() {
+      const name = document.getElementById('b-name').value.trim();
+      const resource = document.getElementById('b-resource').value.trim();
+      const failure_threshold = parseInt(document.getElementById('b-threshold').value, 10);
+      if (!name || !resource || !failure_threshold) { log('请填写完整熔断器信息'); return; }
+      const b = await api('/api/breakers', { method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ name, resource, failure_threshold }) });
+      if (b) { log('熔断器已创建: ' + b.name); loadBreakers(); loadStats(); }
+    }
+
+    loadStats();
+    loadRules();
+    loadBreakers();
+  </script>
+</body>
+</html>
