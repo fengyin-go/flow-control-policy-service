@@ -1,0 +1,22 @@
+package service
+
+import "flowcontrol/internal/store"
+
+type QuotaUsageRetryFlow struct {
+	state *store.QuotaUsageRetryRetryState
+}
+
+func NewQuotaUsageRetryFlow(state *store.QuotaUsageRetryRetryState) *QuotaUsageRetryFlow {
+	return &QuotaUsageRetryFlow{state: state}
+}
+
+func (f *QuotaUsageRetryFlow) Execute() error {
+	var last error
+	for attempt := 0; attempt < 2; attempt++ {
+		last = f.state.Next()
+		if last == nil {
+			return nil
+		}
+	}
+	return last
+}
