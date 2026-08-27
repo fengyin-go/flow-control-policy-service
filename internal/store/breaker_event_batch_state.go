@@ -10,8 +10,8 @@ func (s *BreakerEventBatchStream) Start(items []string, failAt int) (<-chan stri
 	out := make(chan string)
 	errs := make(chan error, 1)
 	go func() {
-
 		defer close(errs)
+		defer close(out)
 		for index, item := range items {
 			if index == failAt {
 				errs <- errors.New("stream interrupted")
