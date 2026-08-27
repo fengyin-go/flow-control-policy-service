@@ -10,7 +10,9 @@ func (s *StatsRollupBatchStream) Start(items []string, failAt int) (<-chan strin
 	out := make(chan string)
 	errs := make(chan error, 1)
 	go func() {
-
+		// 关闭 out，使消费者在流出错提前返回或正常结束后能退出 range，
+		// 否则归并方已收到部分结果却会因 out 永不关闭而卡死。
+		defer close(out)
 		defer close(errs)
 		for index, item := range items {
 			if index == failAt {
