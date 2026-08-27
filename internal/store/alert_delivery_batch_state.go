@@ -10,7 +10,7 @@ func (s *AlertDeliveryBatchStream) Start(items []string, failAt int) (<-chan str
 	out := make(chan string)
 	errs := make(chan error, 1)
 	go func() {
-
+		defer close(out)
 		defer close(errs)
 		for index, item := range items {
 			if index == failAt {
