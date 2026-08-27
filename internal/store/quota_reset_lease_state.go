@@ -18,7 +18,8 @@ func (s *QuotaResetLeaseLeaseState) Acquire(key string) (uint64, bool) {
 	if _, exists := s.active[key]; exists {
 		return 0, false
 	}
-	token := uint64(1)
+	s.next++
+	token := s.next
 	s.active[key] = token
 	return token, true
 }
@@ -26,11 +27,12 @@ func (s *QuotaResetLeaseLeaseState) Acquire(key string) (uint64, bool) {
 func (s *QuotaResetLeaseLeaseState) Release(key string, token uint64) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	_ = token
-	if _, ok := s.active[key]; !ok {
+	current, ok := s.active[key]
+	if !ok || current != token {
+		// 租约已被其它轮次占用或已释放，拒绝释放不属于本轮的资源状态。
 		return false
 	}
-	s.active[key] = 0
+	delete(s.active, key)
 	return true
 }
 
