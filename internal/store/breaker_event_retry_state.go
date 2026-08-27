@@ -1,7 +1,5 @@
 package store
 
-import "errors"
-
 type RetryFailure struct {
 	Temporary bool
 	Message   string
@@ -19,6 +17,8 @@ func NewBreakerEventRetryRetryState(steps ...error) *BreakerEventRetryRetryState
 	return &BreakerEventRetryRetryState{steps: append([]error(nil), steps...)}
 }
 
+// Next 返回下一条预置错误，保留原始错误类别（如 *RetryFailure 的 Temporary 标记），
+// 供上层据此判断是否可重试。步骤耗尽或遇到 nil 步骤时计为一次提交。
 func (s *BreakerEventRetryRetryState) Next() error {
 	s.attempts++
 	var err error
@@ -27,7 +27,7 @@ func (s *BreakerEventRetryRetryState) Next() error {
 		s.steps = s.steps[1:]
 	}
 	if err != nil {
-		return errors.New(err.Error())
+		return err
 	}
 	s.commits++
 	return nil
